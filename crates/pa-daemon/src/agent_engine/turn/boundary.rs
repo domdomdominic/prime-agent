@@ -60,7 +60,8 @@ impl AgentSessionEngine {
             }
         };
         let (model, api_key) = self.resolve_request_target(model);
-        let global_harness_dir = self.config.agent_dir.clone();
+        let global_harness_dir =
+            pa_core::refinement::get_global_harness_state_dir(&self.config.agent_dir);
         // The start event goes out before the summarizer runs, carrying the
         // pending instructions.
         let scheduled = {
@@ -327,5 +328,62 @@ mod tests {
             outcomes[0] < completed,
             "persist the outcome before announcing completion"
         );
+    }
+
+    #[test]
+    fn global_refinement_writes_the_global_harness_store() {
+        let _faux = FAUX_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = tempfile::TempDir::new().unwrap();
+        write_compaction_settings(dir.path(), 1);
+        let agent_dir = dir.path().join("agent");
+        let plan = json!({
+            "summary": "note it",
+            "rationale": "repeated",
+            "expectedOutcome": "recall",
+            "edits": [{"action": "create", "kind": "memory", "id": "m1", "title": "Tactic", "content": "Use tactic A"}]
+        });
+        let engine = std::sync::Arc::new(
+            AgentSessionEngine::new(AgentEngineConfig {
+                cwd: dir.path().to_path_buf(),
+                agent_dir: agent_dir.clone(),
+                provider: None,
+                model: None,
+                api_key: None,
+                thinking: None,
+                session_dir: Some(dir.path().join("sessions")),
+                session_file: None,
+                faux_script: Some(
+                    json!({"responses": [{"text": "seed reply"}, {"text": plan.to_string()}]})
+                        .to_string(),
+                ),
+                supervisor_link: None,
+                telemetry_disabled: None,
+                cron_store: None,
+                queued_steering_probe: None,
+            })
+            .unwrap(),
+        );
+        engine.register_arc();
+        admit(&engine, "seed turn".to_string(), &mut Vec::new());
+        {
+            let guard = engine.session.blocking_lock();
+            let session = guard.as_ref().expect("built session");
+            engine
+                .runtime
+                .block_on(session.turn_boundary.schedule_refine(PendingRefine {
+                    instructions: None,
+                    global: true,
+                }));
+        }
+        let boundary = engine.run_turn_boundary(&mut |_| true);
+        assert!(matches!(boundary, BoundaryRun::Proceed));
+
+        let global_store = pa_core::refinement::get_global_harness_state_dir(&agent_dir)
+            .join("harness_state.json");
+        let state = std::fs::read_to_string(&global_store).expect("global harness store written");
+        assert!(state.contains("Use tactic A"));
+        assert!(!agent_dir.join("harness_state.json").exists());
     }
 }
