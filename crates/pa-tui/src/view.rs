@@ -98,6 +98,9 @@ pub struct AgentView {
     /// `HeartbeatManagerComponent`, inline-picker style): while set, it
     /// owns the editor dock like the `/model` and `/effort` pickers.
     pub heartbeats_picker: Option<crate::heartbeats_picker::HeartbeatsPicker>,
+    /// The `/refine review` view: while set, it owns the editor dock like
+    /// the `/heartbeats` view.
+    pub learnings_review: Option<crate::learnings_review::LearningsReview>,
     pub goal_panel: Option<crate::goal_surface::GoalPanel>,
     pub bash_view: Option<crate::bash_view::BashView>,
     pub share_loader: Option<ShareLoader>,
@@ -243,6 +246,10 @@ impl AgentView {
             mcp.paste(text);
             return true;
         }
+        if let Some(review) = self.learnings_review.as_mut() {
+            review.paste(text);
+            return true;
+        }
         if let Some(selector) = self.tree_selector.as_mut() {
             selector.paste(text);
             return true;
@@ -308,6 +315,7 @@ impl AgentView {
             mcp_view: None,
             factory_view: None,
             heartbeats_picker: None,
+            learnings_review: None,
             goal_panel: None,
             bash_view: None,
             share_loader: None,

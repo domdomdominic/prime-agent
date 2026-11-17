@@ -280,6 +280,14 @@ const WIRE_FIXTURES: &[(&str, &str)] = &[
     ),
     ("refine", r#"{"type": "refine", "activeSessionId": "sess"}"#),
     (
+        "get_learnings",
+        r#"{"type": "get_learnings", "activeSessionId": "sess"}"#,
+    ),
+    (
+        "review_learning",
+        r#"{"type": "review_learning", "activeSessionId": "sess", "refinementId": "r1", "verdict": "keep"}"#,
+    ),
+    (
         "abort_compaction",
         r#"{"type": "abort_compaction", "activeSessionId": "sess"}"#,
     ),

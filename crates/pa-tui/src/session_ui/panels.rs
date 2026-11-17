@@ -13,6 +13,7 @@ pub(crate) struct ActivityUpdates {
     pub bash: mpsc::UnboundedSender<BashActivityUpdate>,
     pub factory: mpsc::UnboundedSender<FactoryUpdate>,
     pub commands: mpsc::UnboundedSender<CommandCatalogUpdate>,
+    pub learnings: mpsc::UnboundedSender<super::LearningsUpdate>,
 }
 
 impl SessionUi {
@@ -150,6 +151,11 @@ impl SessionUi {
             // lane: the factory's opt-in gate (a daemon without the
             // factory lane never mounts the group).
             factory_group: self.factory_activity_supported(),
+            learnings: self
+                .pending_learnings
+                .iter()
+                .map(|learning| learning.summary.clone())
+                .collect(),
             goal_label,
             selected: self.activity_group,
             focused: self.subagents_focused,
@@ -308,6 +314,10 @@ impl SessionUi {
             crate::chrome::ActivityGroup::Bash => {
                 self.emit_activity_opened("bash");
                 self.open_bash_view(view);
+            }
+            crate::chrome::ActivityGroup::Learnings => {
+                self.emit_activity_opened("learnings");
+                self.open_learnings_review(view);
             }
             crate::chrome::ActivityGroup::Factory => {
                 self.emit_activity_opened("factory");

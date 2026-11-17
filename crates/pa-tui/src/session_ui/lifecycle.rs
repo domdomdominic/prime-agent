@@ -142,6 +142,8 @@ impl SessionUi {
             heartbeat_refresh_in_flight: false,
             heartbeat_refresh_queued: false,
             heartbeat_refresh_epoch: 0,
+            pending_learnings: Vec::new(),
+            learnings_updates: activity_updates.learnings,
             command_updates: activity_updates.commands,
             command_refresh_epoch: 0,
             skill_commands_cache: Vec::new(),
@@ -458,6 +460,10 @@ impl SessionUi {
             DockFold::FirstFrame => self.fetch_heartbeat_catalog().await,
             DockFold::Fresh | DockFold::Held => self.spawn_heartbeat_refresh(),
         }
+        if !matches!(dock_fold, DockFold::Held) {
+            self.pending_learnings.clear();
+        }
+        self.spawn_learnings_refresh();
         // The slash-command catalog is session-scoped too; the skill commands
         // land in the autocomplete provider when the response arrives.
         self.spawn_command_catalog_refresh();
@@ -741,6 +747,8 @@ impl SessionUi {
         if let Some(picker) = view.heartbeats_picker.as_mut() {
             picker.apply_catalog(self.heartbeat_catalog.clone(), None);
         }
+        // Learnings belong to the previous session's history.
+        view.learnings_review = None;
         // The brand splash is the EMPTY chat's header: a rebuild that folds a non-empty transcript
         // suppresses it, every rebuild into an empty chat keeps it.
         view.splash_suppressed = !view.chat.is_empty();
@@ -886,6 +894,7 @@ mod backfill_tests {
                 bash: mpsc::unbounded_channel().0,
                 factory: mpsc::unbounded_channel().0,
                 commands: mpsc::unbounded_channel().0,
+                learnings: mpsc::unbounded_channel().0,
             },
             backfill_tx,
         )
@@ -1079,6 +1088,7 @@ mod backfill_tests {
                 bash: mpsc::unbounded_channel().0,
                 factory: mpsc::unbounded_channel().0,
                 commands: mpsc::unbounded_channel().0,
+                learnings: mpsc::unbounded_channel().0,
             },
             mpsc::unbounded_channel().0,
         )

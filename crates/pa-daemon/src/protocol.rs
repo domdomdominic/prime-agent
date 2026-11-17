@@ -126,6 +126,8 @@ pub const KNOWN_COMMAND_TYPES: &[&str] = &[
     "set_auto_retry",
     "compact",
     "refine",
+    "get_learnings",
+    "review_learning",
     "abort_compaction",
     "abort_branch_summary",
     "abort_retry",
@@ -815,6 +817,12 @@ pub fn command_active_session_id(command: &DaemonCommand) -> Option<&str> {
         | DaemonCommand::Refine {
             active_session_id, ..
         }
+        | DaemonCommand::GetLearnings {
+            active_session_id, ..
+        }
+        | DaemonCommand::ReviewLearning {
+            active_session_id, ..
+        }
         | DaemonCommand::AbortCompaction {
             active_session_id, ..
         }
@@ -1036,6 +1044,8 @@ pub fn command_type_name(command: &DaemonCommand) -> &'static str {
         DaemonCommand::SetAutoRetry { .. } => "set_auto_retry",
         DaemonCommand::Compact { .. } => "compact",
         DaemonCommand::Refine { .. } => "refine",
+        DaemonCommand::GetLearnings { .. } => "get_learnings",
+        DaemonCommand::ReviewLearning { .. } => "review_learning",
         DaemonCommand::AbortCompaction { .. } => "abort_compaction",
         DaemonCommand::AbortBranchSummary { .. } => "abort_branch_summary",
         DaemonCommand::AbortRetry { .. } => "abort_retry",

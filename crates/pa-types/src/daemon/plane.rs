@@ -74,6 +74,8 @@ pub fn command_plane(command_type: &str) -> DaemonCommandPlane {
         | "set_auto_retry"
         | "compact"
         | "refine"
+        | "get_learnings"
+        | "review_learning"
         | "abort_compaction"
         | "abort_branch_summary"
         | "abort_retry"
@@ -150,6 +152,7 @@ const READ_ONLY_DAEMON_COMMANDS: &[&str] = &[
     "get_system_prompt",
     "get_rlm_max_depth_status",
     "get_tool_definition",
+    "get_learnings",
 ];
 
 /// TS `isDaemonMutatingCommand`: mutates unless in the read-only table.

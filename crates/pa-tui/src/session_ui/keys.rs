@@ -87,6 +87,7 @@ impl SessionUi {
         let overlay_focused = view.model_picker.is_some()
             || view.choice_picker.is_some()
             || view.heartbeats_picker.is_some()
+            || view.learnings_review.is_some()
             || view.goal_panel.is_some()
             || view.bash_view.is_some()
             || view.info_panel.is_some()
@@ -360,6 +361,9 @@ impl SessionUi {
         // The `/heartbeats` view owns the frame the same way.
         if view.heartbeats_picker.is_some() {
             return self.handle_heartbeats_picker_key(key, view).await;
+        }
+        if view.learnings_review.is_some() {
+            return self.handle_learnings_review_key(key, view).await;
         }
         if view.bash_view.is_some() {
             return self.handle_bash_view_key(key, view);
