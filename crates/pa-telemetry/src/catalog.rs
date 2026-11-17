@@ -1241,6 +1241,20 @@ const HARNESS_REFINEMENTS_CHANGED: EventRule = EventRule {
     properties: &[("enabled", required(boolean()))],
 };
 
+/// The user's verdict on one learning (a refinement it reviewed): the
+/// verdict, the learning's scope, and how many review criteria a revert
+/// named. Never the learning, its note, or its id.
+const LEARNING_REVIEWED: EventRule = EventRule {
+    name: "learning reviewed",
+    since: 2,
+    properties: &[
+        ("session_id", required(uuid())),
+        ("verdict", required(enum_rule(&["keep", "revert"], "keep"))),
+        ("scope", required(enum_rule(&["local", "global"], "local"))),
+        ("failed_criteria_count", required(count())),
+    ],
+};
+
 /// Adoption of the web search provider setting: the chosen provider's id only.
 const WEB_SEARCH_PROVIDER_CHANGED: EventRule = EventRule {
     name: "web search provider changed",
@@ -1256,6 +1270,7 @@ const WEB_SEARCH_PROVIDER_CHANGED: EventRule = EventRule {
 pub fn catalog() -> Vec<&'static EventRule> {
     let mut all: Vec<&'static EventRule> = vec![
         &HARNESS_REFINEMENTS_CHANGED,
+        &LEARNING_REVIEWED,
         &WEB_SEARCH_PROVIDER_CHANGED,
         &AGENT_STARTED,
         &AGENT_RUN_COMPLETED,

@@ -13,6 +13,7 @@ use crate::refinement::executor::{
     apply_refinement_plan, plan_refinement, review_auto_refine, AutoRefineReview,
     AutoRefineReviewContext, RefineOptions as CoreRefineOptions, RefinementPlan,
 };
+use crate::refinement::review::ReviewLog;
 use crate::refinement::{
     append_global_refinement, format_refinement_notice_body, load_global_refinement_history,
     load_harness_state, merge_harness_states, HarnessScope, RefinementResult,
@@ -227,6 +228,13 @@ impl From<&super::harness_digest::HarnessDigestContext> for RefinementStores {
             global_dir: context.global_dir.clone(),
             local_dir: context.local_dir.clone(),
         }
+    }
+}
+
+impl RefinementStores {
+    /// The user's verdicts from both stores' review logs.
+    pub(crate) fn review_log(&self) -> ReviewLog {
+        ReviewLog::load(std::iter::once(self.global_dir.as_path()).chain(self.local_dir.as_deref()))
     }
 }
 
@@ -477,6 +485,7 @@ pub(crate) async fn prepare_refinement(
         messages,
         &planning_state,
         &history,
+        &stores.review_log(),
         model,
         &core_options,
         refine_call,
@@ -538,7 +547,7 @@ pub(crate) async fn prepare_refinement(
 /// than write a store no digest ever shows. The refusal keeps the TS
 /// wording (v0.9.8 `agent-session.ts`): it names the user's real next step,
 /// not the internal path the session lacks.
-fn local_store_dir(local_dir: Option<&Path>) -> anyhow::Result<PathBuf> {
+pub(super) fn local_store_dir(local_dir: Option<&Path>) -> anyhow::Result<PathBuf> {
     local_dir.map(Path::to_path_buf).ok_or_else(|| {
         anyhow::anyhow!(
             "Local harness refinement requires a persisted session; use global refinement instead."
@@ -856,6 +865,7 @@ async fn review_compact_refinement(
         &messages,
         &merged_state,
         &history,
+        &stores.review_log(),
         model,
         &AutoRefineReviewContext {
             reason: AUTO_REFINE_COMPACT_REASON.to_string(),

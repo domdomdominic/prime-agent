@@ -25,6 +25,7 @@ pub mod host_requests;
 pub mod image_model_routing;
 pub mod ipython_state;
 pub mod late_sent_messages;
+pub mod learning_review;
 pub mod messages;
 pub mod model_usage;
 pub mod provider_adapter;

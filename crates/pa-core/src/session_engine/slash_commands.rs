@@ -9,6 +9,8 @@ pub use pa_types::slash_commands::{
     SESSION_SLASH_COMMAND_NAMES,
 };
 
+use crate::refinement::review::{Criterion, FailedCriteria};
+
 /// A parsed session slash command (compact/refine/goal/autonomous).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionSlashCommand {
@@ -84,9 +86,91 @@ pub fn parse_refine_command_options(args: &str) -> Result<RefineCommandOptions, 
     })
 }
 
+/// A `/refine` learning-review subcommand.
+#[derive(Debug, PartialEq)]
+pub enum LearningReviewCommand {
+    List,
+    Keep {
+        id: String,
+    },
+    Revert {
+        id: String,
+        failed_criteria: FailedCriteria,
+        note: Option<String>,
+    },
+}
+
+const REVERT_USAGE: &str = "Usage: /refine revert <refinement-id> <criteria> [note], where criteria is a comma-separated list of 1-5 or inaccurate,one_off,wrong_scope,wrong_component,redundant";
+
+/// Parse `/refine review`, `/refine keep <id>`, and
+/// `/refine revert <id> <criteria> [note]`; `None` for every other `/refine`.
+///
+/// # Errors
+///
+/// Returns a usage-error string when `keep` or `revert` is missing its id or
+/// a revert names no valid criterion.
+pub fn parse_learning_review_command(args: &str) -> Option<Result<LearningReviewCommand, String>> {
+    let mut words = args.split_whitespace();
+    let subcommand = words.next()?;
+    let id = words.next().map(str::to_string);
+    match subcommand {
+        "review" if id.is_none() => Some(Ok(LearningReviewCommand::List)),
+        "keep" => Some(match (id, words.next()) {
+            (Some(id), None) => Ok(LearningReviewCommand::Keep { id }),
+            _ => Err("Usage: /refine keep <refinement-id>".to_string()),
+        }),
+        "revert" => {
+            let parsed = id.zip(words.next()).and_then(|(id, criteria)| {
+                let criteria = criteria
+                    .split(',')
+                    .map(Criterion::parse)
+                    .collect::<Option<Vec<_>>>()?;
+                let note = words.collect::<Vec<_>>().join(" ");
+                Some(LearningReviewCommand::Revert {
+                    id,
+                    failed_criteria: FailedCriteria::try_from(criteria).ok()?,
+                    note: (!note.is_empty()).then_some(note),
+                })
+            });
+            Some(parsed.ok_or_else(|| REVERT_USAGE.to_string()))
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn learning_review_commands_parse() {
+        assert_eq!(
+            [
+                parse_learning_review_command("review"),
+                parse_learning_review_command("keep refine_1"),
+                parse_learning_review_command("revert refine_1 2,wrong_scope too narrow"),
+                parse_learning_review_command("revert refine_1 9"),
+                parse_learning_review_command("review the last edit"),
+            ],
+            [
+                Some(Ok(LearningReviewCommand::List)),
+                Some(Ok(LearningReviewCommand::Keep {
+                    id: "refine_1".to_string()
+                })),
+                Some(Ok(LearningReviewCommand::Revert {
+                    id: "refine_1".to_string(),
+                    failed_criteria: FailedCriteria::try_from(vec![
+                        Criterion::OneOff,
+                        Criterion::WrongScope
+                    ])
+                    .unwrap(),
+                    note: Some("too narrow".to_string()),
+                })),
+                Some(Err(REVERT_USAGE.to_string())),
+                None,
+            ]
+        );
+    }
 
     #[test]
     fn refine_options_parsing() {

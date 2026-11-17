@@ -363,6 +363,7 @@ pub fn convert_to_llm(messages: &[AgentMessage]) -> Vec<AgentMessage> {
                         | COMPACTION_OUTCOME_CUSTOM_TYPE
                         | MCP_CONNECTION_OUTCOME_CUSTOM_TYPE
                         | REFINEMENT_OUTCOME_CUSTOM_TYPE
+                        | super::learning_review::LEARNING_REVIEW_CUSTOM_TYPE
                         | PROVIDER_RETRY_OUTCOME_CUSTOM_TYPE
                         | crate::prompts::model_prompts::MODEL_PROMPT_ERROR_CUSTOM_TYPE
                         | super::skill_problems_notice::SKILL_PROBLEMS_CUSTOM_TYPE

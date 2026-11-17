@@ -546,6 +546,46 @@ async fn session_counters_ride_session_ended() {
     assert_eq!(ended["feature_goal_completed_count"], serde_json::json!(1));
 }
 
+/// A learning verdict is its own `learning reviewed` event carrying only
+/// the verdict, the scope, and the failed-criteria count.
+#[tokio::test]
+async fn a_learning_verdict_tracks_learning_reviewed() {
+    let fixture = fixture();
+    let telemetry = SessionTelemetry::detached(
+        fixture.client.clone(),
+        fixture.state.clone(),
+        "interactive".to_string(),
+    );
+    let revert = crate::refinement::review::Verdict::Revert {
+        failed_criteria: vec![
+            crate::refinement::review::Criterion::OneOff,
+            crate::refinement::review::Criterion::WrongScope,
+        ]
+        .try_into()
+        .unwrap(),
+        note: Some("task state".to_string()),
+        rollback_id: "refine_2".to_string(),
+    };
+    telemetry.note_learning_reviewed(&revert, crate::refinement::HarnessScope::Local);
+    let reviewed = &event_properties(&fixture.mock, "learning reviewed").await[0];
+    let tracked: serde_json::Value = ["session_id", "verdict", "scope", "failed_criteria_count"]
+        .iter()
+        .map(|key| ((*key).to_string(), reviewed[*key].clone()))
+        .collect::<serde_json::Map<_, _>>()
+        .into();
+    assert_eq!(
+        tracked,
+        serde_json::json!({
+            "session_id": "0197d0a0-8f5c-7f2a-b0e3-2d7e0d2b3b1a",
+            "verdict": "revert",
+            "scope": "local",
+            "failed_criteria_count": 2,
+        })
+    );
+    let all = serde_json::to_string(&fixture.mock.events()).unwrap();
+    assert!(!all.contains("task state") && !all.contains("refine_2"));
+}
+
 /// `build_client` reuses the installation id a TS install wrote to
 /// `telemetry.json` (one user across both products) and mirrors events to
 /// the local JSONL file under that id.

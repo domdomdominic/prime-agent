@@ -1,0 +1,1 @@
+- Added `/refine review`, `/refine keep <id>`, and `/refine revert <id> <criteria> [note]`. You can now keep each learning or roll it back with the review criteria it failed, and the refiner sees each verdict when it plans the next refinement.

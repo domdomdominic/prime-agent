@@ -21,7 +21,10 @@ pub(crate) fn without_refinements(messages: Vec<AgentMessage>) -> Vec<AgentMessa
             AgentMessage::Custom(custom)
                 if matches!(
                     custom.custom_type.as_str(),
-                    "harness_digest" | "refinement_notice" | "refinement_outcome"
+                    "harness_digest"
+                        | "refinement_notice"
+                        | "refinement_outcome"
+                        | super::learning_review::LEARNING_REVIEW_CUSTOM_TYPE
                 ) =>
             {
                 None
