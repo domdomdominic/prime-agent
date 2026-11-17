@@ -529,6 +529,8 @@ impl SessionUi {
                     "the turn ended before this call returned",
                 );
                 self.aborted_tools.clear();
+                // The agent's own `rlm.harness` writes are learnings with no transcript row.
+                self.spawn_learnings_refresh();
                 // A provider failure already surfaced through the failed assistant message
                 // or the retry-exhausted banner; the turn result error is only a backstop.
                 if let (Some(error), false) = (error, self.turn_error_shown) {
