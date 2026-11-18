@@ -746,6 +746,7 @@ class HarnessState:
             _require_text(kind, _describe_entry(id, title), "id", id)
         entry_id = id or _slug(title, kind)
         existing = self.entries[kind].get(entry_id)
+        before = copy.deepcopy(asdict(existing)) if existing else None
         _validate_entry_shape(
             kind,
             entry_id,
@@ -795,7 +796,43 @@ class HarnessState:
             )
             self.entries[kind][entry_id] = entry
         self.save()
+        self._append_history("update" if before else "create", kind, entry_id, title, before, asdict(entry))
         return entry
+
+    def _append_history(
+        self,
+        action: Literal["create", "update", "delete"],
+        kind: HarnessKind,
+        entry_id: str,
+        title: str,
+        before: dict[str, Any] | None,
+        after: dict[str, Any] | None,
+    ) -> None:
+        # Each direct write becomes a learning in refinement_history.jsonl, so the
+        # user can review and revert it like a refiner edit.
+        if self.file_path is None:
+            return
+        now = datetime.now(timezone.utc)
+        edit: dict[str, Any] = {"action": action, "kind": kind, "id": entry_id, "title": title}
+        if before is not None:
+            edit["before"] = before
+        if after is not None:
+            edit["after"] = after
+        edit["applied"] = True
+        past = {"create": "created", "update": "updated", "delete": "deleted"}[action]
+        record = {
+            "id": f"refine_{now:%Y%m%d%H%M%S}{now.microsecond // 1000:03d}_{uuid4().hex[:6]}",
+            "summary": f"Agent {past} {kind} {title}",
+            "rationale": "Direct kernel write (rlm.harness).",
+            "expectedOutcome": "",
+            "appliedEdits": [edit],
+            "harnessStatePath": str(self.file_path),
+            "scope": self.scope,
+        }
+        history_path = self.file_path.parent / "refinement_history.jsonl"
+        descriptor = os.open(history_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(descriptor, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     def get(self, kind: HarnessKind, id: str, *, global_: bool = False, **kwargs: Any) -> HarnessEntry | None:
         id, global_ = _strip_scope_prefix(id, global_)
@@ -816,8 +853,9 @@ class HarnessState:
                 raise ValueError(f"unknown harness kind {kind!r}; expected one of {_KINDS}")
             if id not in self.entries[kind]:
                 return False
-            del self.entries[kind][id]
+            removed = self.entries[kind].pop(id)
             self.save()
+            self._append_history("delete", kind, id, removed.title, asdict(removed), None)
             return True
 
     def list(self, kind: HarnessKind | None = None, *, global_: bool = False, **kwargs: Any) -> list[HarnessEntry]:

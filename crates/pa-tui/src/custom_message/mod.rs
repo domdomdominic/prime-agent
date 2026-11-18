@@ -58,6 +58,8 @@ pub const RLM_CHILD_TERMINAL_NOTICE_CUSTOM_TYPE: &str = "rlm_child_terminal_noti
 pub const ASYNC_BASH_COMPLETION_CUSTOM_TYPE: &str = "async_bash_completion";
 pub const COMPACTION_OUTCOME_CUSTOM_TYPE: &str = "compaction_outcome";
 pub const REFINEMENT_OUTCOME_CUSTOM_TYPE: &str = "refinement_outcome";
+/// Wire twin of `pa_core::session_engine::learning_review::LEARNING_REVIEW_CUSTOM_TYPE`.
+pub const LEARNING_REVIEW_CUSTOM_TYPE: &str = "learning_review";
 /// The durable single-line outcome of one provider-retry episode (SANCTIONED DIVERGENCE,
 /// operator ruling 2026-09-23: one terminal row per episode instead of TS's per-attempt error
 /// rows). Wire twin of `pa_core::session_engine::messages::PROVIDER_RETRY_OUTCOME_CUSTOM_TYPE`.
@@ -201,6 +203,7 @@ pub fn custom_message_entries(message: &Value) -> Vec<ChatEntry> {
             kind: crate::chat::StatusKind::Warning,
         }],
         REFINEMENT_OUTCOME_CUSTOM_TYPE => refinement::refinement_outcome_entries(message, details),
+        LEARNING_REVIEW_CUSTOM_TYPE => refinement::learning_review_entries(message, details),
         AGENT_MESSAGE_CUSTOM_TYPE => agent_message_entry(details).map_or_else(
             || vec![generic_panel_entry(custom_type, message)],
             |entry| vec![entry],

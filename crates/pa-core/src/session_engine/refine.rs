@@ -15,8 +15,8 @@ use crate::refinement::executor::{
 };
 use crate::refinement::review::ReviewLog;
 use crate::refinement::{
-    append_global_refinement, format_refinement_notice_body, load_global_refinement_history,
-    load_harness_state, merge_harness_states, HarnessScope, RefinementResult,
+    append_global_refinement, format_refinement_notice_body, load_harness_state,
+    load_refinement_history_file, merge_harness_states, HarnessScope, RefinementResult,
 };
 use crate::session::manager::SessionManager;
 
@@ -232,6 +232,16 @@ impl From<&super::harness_digest::HarnessDigestContext> for RefinementStores {
 }
 
 impl RefinementStores {
+    /// Both stores' history files. The local file holds the kernel's direct
+    /// `rlm.harness` writes, which never enter the session history.
+    pub(crate) fn file_history(&self) -> Vec<RefinementResult> {
+        let mut history = load_refinement_history_file(&self.global_dir, HarnessScope::Global);
+        if let Some(local_dir) = &self.local_dir {
+            history.extend(load_refinement_history_file(local_dir, HarnessScope::Local));
+        }
+        history
+    }
+
     /// The user's verdicts from both stores' review logs.
     pub(crate) fn review_log(&self) -> ReviewLog {
         ReviewLog::load(std::iter::once(self.global_dir.as_path()).chain(self.local_dir.as_deref()))
@@ -465,8 +475,8 @@ pub(crate) async fn prepare_refinement(
             .map(|dir| load_harness_state(dir, HarnessScope::Local));
         merge_harness_states(&global_state, local_state.as_ref())
     };
-    let global = load_global_refinement_history(&stores.global_dir);
-    let history = crate::refinement::merge_refinement_history(&global, refinement_history);
+    let history =
+        crate::refinement::merge_refinement_history(&stores.file_history(), refinement_history);
     // Baseline captured before the (slow) LLM pass, so concurrent kernel
     // writes are rejected instead of clobbered.
     let baseline_scope = options
@@ -850,7 +860,7 @@ async fn review_compact_refinement(
         (
             session.refine_transcript_parts(),
             merge_harness_states(&global_state, local_state.as_ref()),
-            load_global_refinement_history(&stores.global_dir),
+            stores.file_history(),
             session.get_session_id().to_string(),
         )
     };
@@ -1661,7 +1671,7 @@ Reviewer instructions: record it"
         assert_eq!(custom_messages.len(), 2);
         let session = session.lock().await;
         let merged_history = crate::refinement::merge_refinement_history(
-            &load_global_refinement_history(&global_dir),
+            &load_refinement_history_file(&global_dir, HarnessScope::Global),
             &session.refinement_history(),
         );
         assert_eq!(merged_history.len(), 1);
@@ -1920,7 +1930,7 @@ Reviewer instructions: record it"
         assert!(
             global_state.entries[&crate::refinement::RefinementKind::Memory].contains_key("g1")
         );
-        let history = load_global_refinement_history(&global_dir);
+        let history = load_refinement_history_file(&global_dir, HarnessScope::Global);
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].id, result.id);
         let rolled = execute_refinement(

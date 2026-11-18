@@ -1,0 +1,1 @@
+- The activity dock's learnings count now updates when a turn ends, so the agent's own harness writes appear without a reload.

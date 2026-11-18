@@ -456,6 +456,34 @@ pub trait SessionEngine: Send + Sync {
         anyhow::bail!("This session does not support refinement")
     }
 
+    /// The session's learnings with their review state (the daemon
+    /// `get_learnings` command): `{ learnings: [<review card details>] }`.
+    ///
+    /// # Errors
+    ///
+    /// Errors when the engine does not support learning review, or model
+    /// resolution or the session build fails.
+    fn learnings(&self) -> Result<Value> {
+        anyhow::bail!("This session does not support learning review")
+    }
+
+    /// Record the user's verdict on one learning (the daemon
+    /// `review_learning` command): `{ record, rollback? }`, where a revert
+    /// carries the rollback's `RefinementResult`.
+    ///
+    /// # Errors
+    ///
+    /// Errors when the engine does not support learning review, or the
+    /// review itself fails (unknown, already reviewed, or changed since).
+    fn review_learning(
+        &self,
+        refinement_id: &str,
+        decision: pa_core::session_engine::learning_review::ReviewDecision,
+    ) -> Result<Value> {
+        let _ = (refinement_id, decision);
+        anyhow::bail!("This session does not support learning review")
+    }
+
     /// The session's RLM max-depth status `{ maxDepth, source }`, with the
     /// TS source vocabulary (`default` | `env` | `global` | `inherited` | `chat`).
     fn rlm_max_depth_status(&self) -> Value {

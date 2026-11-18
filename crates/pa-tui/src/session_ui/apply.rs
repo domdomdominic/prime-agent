@@ -437,6 +437,10 @@ impl SessionUi {
                 self.dirty = true;
             }
             TurnUpdate::CustomRow(entry) => {
+                // A refinement or its rollback changes which learnings await a verdict.
+                if matches!(entry, ChatEntry::RefinementOutcome(_)) {
+                    self.spawn_learnings_refresh();
+                }
                 view.push_entry(entry);
             }
             TurnUpdate::AssistantMessage {
@@ -525,6 +529,8 @@ impl SessionUi {
                     "the turn ended before this call returned",
                 );
                 self.aborted_tools.clear();
+                // The agent's own `rlm.harness` writes are learnings with no transcript row.
+                self.spawn_learnings_refresh();
                 // A provider failure already surfaced through the failed assistant message
                 // or the retry-exhausted banner; the turn result error is only a backstop.
                 if let (Some(error), false) = (error, self.turn_error_shown) {

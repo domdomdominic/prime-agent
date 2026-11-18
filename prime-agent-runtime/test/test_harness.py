@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import patch
 
@@ -142,6 +143,40 @@ class HarnessStateTest(unittest.TestCase):
                 self.assertFalse(delete_method(entry_id))
 
             self.assertEqual(state.list(), [])
+
+    def test_each_direct_write_appends_one_revertable_history_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state = HarnessState(Path(temp_dir) / "harness_state.json")
+            created = asdict(state.create_memory("Memory", "v1", id="m1"))
+            updated = asdict(state.update_memory("m1", "Memory", "v2"))
+            self.assertTrue(state.delete_memory("m1"))
+
+            history_path = Path(temp_dir) / "refinement_history.jsonl"
+            self.assertEqual(stat.S_IMODE(history_path.stat().st_mode), 0o600)
+            records = [json.loads(line) for line in history_path.read_text(encoding="utf-8").splitlines()]
+            for record in records:
+                self.assertRegex(record.pop("id"), r"^refine_\d{17}_[0-9a-f]{6}$")
+
+            def record(action: str, past: str, **snapshots: dict) -> dict:
+                return {
+                    "summary": f"Agent {past} memory Memory",
+                    "rationale": "Direct kernel write (rlm.harness).",
+                    "expectedOutcome": "",
+                    "appliedEdits": [
+                        {"action": action, "kind": "memory", "id": "m1", "title": "Memory", **snapshots, "applied": True}
+                    ],
+                    "harnessStatePath": str(state.file_path),
+                    "scope": "local",
+                }
+
+            self.assertEqual(
+                records,
+                [
+                    record("create", "created", after=created),
+                    record("update", "updated", before=created, after=updated),
+                    record("delete", "deleted", before=updated),
+                ],
+            )
 
     def test_persists_entries_and_refinements(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

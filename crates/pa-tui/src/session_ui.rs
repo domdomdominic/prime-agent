@@ -10,6 +10,7 @@ mod commands;
 mod factory;
 mod heartbeats;
 mod keys;
+mod learnings;
 mod lifecycle;
 mod model_picker;
 mod notes;
@@ -35,6 +36,7 @@ pub(crate) use heartbeats::HeartbeatsUpdate;
 /// session open instead of echoing into the editor.
 pub(crate) use keys::opening_echo_key_claimed;
 use keys::SelectionAutoScroll;
+pub(crate) use learnings::LearningsUpdate;
 pub(crate) use model_picker::picker_viewport_rows;
 pub(crate) use model_picker::ModelCatalogUpdate;
 use panels::pop_superseded_attempt_row;
@@ -298,6 +300,9 @@ pub(crate) struct SessionUi {
     heartbeat_refresh_in_flight: bool,
     heartbeat_refresh_queued: bool,
     heartbeat_refresh_epoch: u64,
+    /// The learnings awaiting a verdict: the dock's count and the review view's list.
+    pending_learnings: Vec<crate::learnings_review::PendingLearning>,
+    learnings_updates: mpsc::UnboundedSender<LearningsUpdate>,
     command_updates: mpsc::UnboundedSender<CommandCatalogUpdate>,
     command_refresh_epoch: u64,
     skill_commands_cache: Vec<crate::autocomplete::SlashCommandEntry>,

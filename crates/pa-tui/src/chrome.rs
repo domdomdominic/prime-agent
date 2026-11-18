@@ -95,6 +95,8 @@ pub enum ActivityGroup {
     Subagents,
     Heartbeats,
     Bash,
+    /// The learnings awaiting a verdict: opens the review view.
+    Learnings,
     /// The factory page: live factory runs. Its group renders exactly
     /// while the daemon advertises the `factory_activity` lane (the
     /// opt-in gate; an advertised empty one reads its zero count) and
@@ -165,6 +167,8 @@ pub struct ActivityDock {
     /// mounts no factory group anywhere: no row, no traversal, no
     /// click, no page.
     pub factory_group: bool,
+    /// The learnings awaiting a verdict, one summary each (the expanded row).
+    pub learnings: Vec<String>,
     /// The active goal's dock label — `Pursuing goal (12m 05s)`-style,
     /// the elapsed-time form (the operator's 2026-09-24 directive: the
     /// row reads the time, the token budget lives inside the goal
@@ -189,6 +193,7 @@ impl ActivityDock {
             ActivityGroup::Subagents,
             ActivityGroup::Heartbeats,
             ActivityGroup::Bash,
+            ActivityGroup::Learnings,
         ];
         if self.factory_group {
             groups.push(ActivityGroup::Factory);
@@ -810,6 +815,22 @@ pub fn render_activity_dock_segments(
                     ));
                 }
             }
+            // Learnings wait on the user, so a non-zero count reads amber.
+            ActivityGroup::Learnings => {
+                let pending = dock.learnings.len();
+                let color = if pending > 0 {
+                    ThemeColor::Warning
+                } else {
+                    ThemeColor::Muted
+                };
+                line.push(theme.fg_span(
+                    color,
+                    format!(
+                        "✎ {pending} learning{}",
+                        if pending == 1 { "" } else { "s" }
+                    ),
+                ));
+            }
             // The factory indicator counts the running runs, and the paused
             // ones in their own amber cluster (the heartbeats' grammar): done
             // and failed runs stay as panels inside the factory page.
@@ -929,6 +950,13 @@ fn render_expanded_dock_row(
             let items: Vec<String> = breakdown.into_iter().chain(dock.shells.clone()).collect();
             expanded_group_row(theme, width, ("▸", "shells"), dock.shells.len(), &items)
         }
+        ActivityGroup::Learnings => expanded_group_row(
+            theme,
+            width,
+            ("✎", "learnings"),
+            dock.learnings.len(),
+            &dock.learnings,
+        ),
         // The stored specs and live runs lead, then each live run.
         ActivityGroup::Factory => {
             let counts = crate::factory_view::FactoryCounts {

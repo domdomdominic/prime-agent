@@ -59,6 +59,12 @@ impl SessionUi {
                 self.exit_requested = true;
                 return Ok(());
             }
+            // The review view replaces the session's text list of learnings.
+            "refine" if args.trim() == "review" => {
+                self.track_command_used("refine");
+                self.open_learnings_review(view);
+                return Ok(());
+            }
             _ => {}
         }
 

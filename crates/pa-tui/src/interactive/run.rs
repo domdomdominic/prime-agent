@@ -227,6 +227,8 @@ async fn run_interactive_surface(
     // autocomplete provider.
     let (commands_tx, mut commands_rx) =
         mpsc::unbounded_channel::<crate::session_ui::CommandCatalogUpdate>();
+    let (learnings_tx, mut learnings_rx) =
+        mpsc::unbounded_channel::<crate::session_ui::LearningsUpdate>();
     let (page_tx, mut page_rx) = mpsc::unbounded_channel::<crate::session_ui::TranscriptPageNote>();
     // The double-Ctrl+C force-quit guard: the terminal reader observes the pair while this loop is
     // wedged in a daemon request; a std-thread watchdog enforces the exit deadline without the
@@ -335,6 +337,7 @@ async fn run_interactive_surface(
         let bash_tx = bash_tx.clone();
         let factory_tx = factory_tx.clone();
         let commands_tx = commands_tx.clone();
+        let learnings_tx = learnings_tx.clone();
         let page_tx = page_tx.clone();
         let waits_through_update_restart = !matches!(route, SessionOpenRoute::Cli);
         tokio::spawn(async move {
@@ -363,6 +366,7 @@ async fn run_interactive_surface(
                     let bash_tx = bash_tx.clone();
                     let factory_tx = factory_tx.clone();
                     let commands_tx = commands_tx.clone();
+                    let learnings_tx = learnings_tx.clone();
                     let page_tx = page_tx.clone();
                     async move {
                         let (client, events) = match first {
@@ -390,6 +394,7 @@ async fn run_interactive_surface(
                                 bash: bash_tx,
                                 factory: factory_tx,
                                 commands: commands_tx,
+                                learnings: learnings_tx,
                             },
                             page_tx,
                         )
@@ -1497,6 +1502,11 @@ async fn run_interactive_surface(
             maybe_factory = factory_rx.recv() => {
                 if let Some(update) = maybe_factory {
                     session.apply_factory_update(update, &mut view);
+                }
+            }
+            maybe_learnings = learnings_rx.recv() => {
+                if let Some(update) = maybe_learnings {
+                    session.apply_learnings_update(update, &mut view);
                 }
             }
             maybe_commands = commands_rx.recv() => {

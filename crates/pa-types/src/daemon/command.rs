@@ -1004,6 +1004,30 @@ pub enum DaemonCommand {
         #[serde(flatten)]
         rest: JsonMap,
     },
+    /// The session's learnings with their review state.
+    GetLearnings {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        active_session_id: String,
+        #[serde(flatten)]
+        rest: JsonMap,
+    },
+    /// The user's keep or revert verdict on one learning.
+    ReviewLearning {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        active_session_id: String,
+        refinement_id: String,
+        /// `keep` or `revert`.
+        verdict: String,
+        /// A revert's failed criteria (`snake_case` names); at least one.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        failed_criteria: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+        #[serde(flatten)]
+        rest: JsonMap,
+    },
     AbortCompaction {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         id: Option<String>,
