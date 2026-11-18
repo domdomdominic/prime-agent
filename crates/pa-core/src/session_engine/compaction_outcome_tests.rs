@@ -236,7 +236,7 @@ async fn message_end_persist_failure_retains_the_row_and_swallows() {
     );
 }
 
-fn session_ai_model() -> pa_types::ai::Model {
+pub(super) fn session_ai_model() -> pa_types::ai::Model {
     serde_json::from_value(serde_json::json!({
         "id": "m", "name": "m", "api": "openai-completions", "provider": "test",
         "baseUrl": "http://localhost", "reasoning": false, "input": ["text"],
@@ -307,7 +307,7 @@ fn plan_reply(plan: &str) -> AssistantMessage {
     }
 }
 
-fn refine_plan_call(plan: &'static str) -> crate::refinement::executor::RefinerFn {
+pub(super) fn refine_plan_call(plan: &'static str) -> crate::refinement::executor::RefinerFn {
     Box::new(move |_model, _system, _prompt| {
         let reply = plan_reply(plan);
         Box::pin(async move { Ok(reply) })
@@ -356,12 +356,12 @@ fn seed_local_memory(dir: &std::path::Path, id: &str, title: &str) {
     crate::refinement::save_harness_state(dir, &state).unwrap();
 }
 
-const APPLIED_PLAN: &str = r#"{"summary":"note it","rationale":"repeated","expectedOutcome":"recall","edits":[{"action":"create","kind":"memory","id":"m1","title":"Tactic","content":"Use tactic A"}]}"#;
+pub(super) const APPLIED_PLAN: &str = r#"{"summary":"note it","rationale":"repeated","expectedOutcome":"recall","edits":[{"action":"create","kind":"memory","id":"m1","title":"Tactic","content":"Use tactic A"}]}"#;
 const EMPTY_PLAN: &str = r#"{"summary":"bench","edits":[]}"#;
 
 /// A persisted session over two seeded rows, with the live loop context
 /// built the way the resume path builds it (one rebuild).
-async fn refine_test_session() -> (AgentSession, tempfile::TempDir) {
+pub(super) async fn refine_test_session() -> (AgentSession, tempfile::TempDir) {
     refine_test_session_with(Arc::new(ScriptedProvider::new(test_model())), Vec::new()).await
 }
 

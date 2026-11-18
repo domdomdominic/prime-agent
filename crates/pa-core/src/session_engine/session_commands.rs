@@ -19,11 +19,16 @@ use crate::slash_command_args::{
 use super::compact_session::CompactOutcome;
 use super::engine::SessionEngine;
 use super::goal_driver::GoalDriver;
+use super::learning_review::ReviewDecision;
 use super::messages::{
     SESSION_SLASH_COMMAND_CUSTOM_TYPE, SESSION_SLASH_COMMAND_RESULT_CUSTOM_TYPE,
 };
 use super::refine::{RefineOptions, RefinementSource};
-use super::slash_commands::{parse_refine_command_options, SessionSlashCommand};
+use super::slash_commands::{
+    parse_learning_review_command, parse_refine_command_options, LearningReviewCommand,
+    SessionSlashCommand,
+};
+use crate::refinement::review::{Criterion, ReviewState, Verdict};
 
 pub use crate::autonomous::AUTONOMOUS_STATUS_CUSTOM_TYPE;
 
@@ -186,7 +191,13 @@ pub async fn execute_session_command(
     }
     let result = match command.name {
         "compact" => execute_compact(engine, params, command, &mut execution).await,
-        "refine" => execute_refine(engine, params, command, &mut execution),
+        "refine" => match parse_learning_review_command(&command.args) {
+            Some(Ok(review)) => {
+                execute_learning_review(engine, params, command, review, &mut execution).await
+            }
+            Some(Err(usage)) => Err(usage),
+            None => execute_refine(engine, params, command, &mut execution),
+        },
         "goal" => execute_goal(engine, command, images, &mut execution).await,
         "autonomous" => execute_autonomous(params, command, &mut execution),
         other => Err(format!("Unknown session command: {other}")),
@@ -291,6 +302,90 @@ fn execute_refine(
         RefinementSource::User,
         params.model.clone(),
         params.api_key.take(),
+    ));
+    Ok(())
+}
+
+/// `/refine review|keep|revert`: list the learnings awaiting review, or
+/// record a verdict on one.
+async fn execute_learning_review(
+    engine: &SessionEngine,
+    params: &SessionCommandParams<'_>,
+    command: &SessionSlashCommand,
+    review: LearningReviewCommand,
+    execution: &mut SessionCommandExecution,
+) -> Result<(), String> {
+    let (id, decision) = match review {
+        LearningReviewCommand::List => {
+            let learnings = engine
+                .session
+                .learnings()
+                .await
+                .map_err(|error| format!("{error:#}"))?;
+            let open: Vec<_> = learnings
+                .iter()
+                .filter(|learning| {
+                    matches!(learning.state, ReviewState::Pending | ReviewState::Stale)
+                })
+                .collect();
+            let content = if open.is_empty() {
+                "No learnings to review.".to_string()
+            } else {
+                let criteria = Criterion::ALL
+                    .iter()
+                    .enumerate()
+                    .map(|(index, criterion)| format!("{} {}", index + 1, criterion.label()))
+                    .collect::<Vec<_>>()
+                    .join(" \u{b7} ");
+                format!(
+                    "{} learning{} to review. Keep: /refine keep <id>. Revert: /refine revert <id> <criteria> [note]. Criteria: {criteria}.",
+                    open.len(),
+                    if open.len() == 1 { "" } else { "s" }
+                )
+            };
+            execution.push_message(slash_command_result(
+                command, content, true, "info", None, true,
+            ));
+            for learning in open {
+                execution.push_message(learning.review_message());
+            }
+            return Ok(());
+        }
+        LearningReviewCommand::Keep { id } => (id, ReviewDecision::Keep),
+        LearningReviewCommand::Revert {
+            id,
+            failed_criteria,
+            note,
+        } => (
+            id,
+            ReviewDecision::Revert {
+                failed_criteria,
+                note,
+            },
+        ),
+    };
+    let outcome = engine
+        .review_learning(&id, decision, params.model)
+        .await
+        .map_err(|error| format!("{error:#}"))?;
+    let content = match &outcome.record.verdict {
+        Verdict::Keep => format!("Kept learning {id}."),
+        Verdict::Revert {
+            failed_criteria,
+            rollback_id,
+            ..
+        } => format!(
+            "Reverted learning {id} (failed: {}). Rollback {rollback_id}.",
+            failed_criteria.labels()
+        ),
+    };
+    // The rollback already committed; the host surfaces its rows the way it
+    // surfaces any settled refinement.
+    if let Some(rollback) = outcome.rollback {
+        execution.pending_refinement = Some(tokio::spawn(async move { Ok(rollback) }));
+    }
+    execution.push_message(slash_command_result(
+        command, content, true, "info", None, true,
     ));
     Ok(())
 }

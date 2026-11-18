@@ -6,6 +6,7 @@ use super::planner::{
     RefinementProposal, AUTO_REFINE_REVIEW_MAX_OUTPUT_TOKENS, AUTO_REFINE_REVIEW_SYSTEM_PROMPT,
     REFINEMENT_MAX_OUTPUT_TOKENS, REFINEMENT_SYSTEM_PROMPT,
 };
+use super::review::{verdict_for_prompt, ReviewLog};
 use super::{
     infer_refinement_result_scope, merge_refinement_history, HarnessScope, HarnessState,
     RefinementKind, RefinementResult, REFINEMENT_KINDS,
@@ -86,7 +87,7 @@ pub fn overview_for_prompt(state: &HarnessState) -> String {
 }
 
 #[must_use]
-pub fn history_for_prompt(history: &[RefinementResult]) -> String {
+pub fn history_for_prompt(history: &[RefinementResult], reviews: &ReviewLog) -> String {
     if history.is_empty() {
         return "No prior refinement history.".to_string();
     }
@@ -115,8 +116,12 @@ pub fn history_for_prompt(history: &[RefinementResult]) -> String {
                 .as_ref()
                 .map(|id| format!(" rollbackOf={id}"))
                 .unwrap_or_default();
+            let verdict = reviews
+                .verdict(&item.id)
+                .map(|verdict| format!("\n{}", verdict_for_prompt(verdict)))
+                .unwrap_or_default();
             format!(
-                "[{}]{} {}\n{edits}\nExpected outcome: {}",
+                "[{}]{} {}\n{edits}\nExpected outcome: {}{verdict}",
                 item.id, rollback, item.summary, item.expected_outcome
             )
         })
@@ -195,6 +200,7 @@ pub async fn plan_refinement(
     messages: &[AgentMessage],
     state: &HarnessState,
     history: &[RefinementResult],
+    reviews: &ReviewLog,
     model: &pa_types::ai::Model,
     options: &RefineOptions,
     refine_call: RefinerFn,
@@ -231,7 +237,7 @@ pub async fn plan_refinement(
             ),
             format!(
                 "<refinement_history>\n{}\n</refinement_history>",
-                history_for_prompt(history)
+                history_for_prompt(history, reviews)
             ),
             format!("<conversation>\n{conversation}\n</conversation>"),
             format!("<scope_policy>\n{scope_instruction}\n</scope_policy>"),
@@ -364,6 +370,7 @@ pub async fn review_auto_refine(
     messages: &[AgentMessage],
     state: &HarnessState,
     history: &[RefinementResult],
+    reviews: &ReviewLog,
     model: &pa_types::ai::Model,
     context: &AutoRefineReviewContext,
     review_call: RefinerFn,
@@ -381,7 +388,7 @@ pub async fn review_auto_refine(
             ),
             format!(
                 "<refinement_history>\n{}\n</refinement_history>",
-                history_for_prompt(history)
+                history_for_prompt(history, reviews)
             ),
             format!("<conversation>\n{conversation}\n</conversation>"),
             "Return shouldRefine=true when the trajectory contains evidence useful to this session's future turns. Prefer local harness edits for current task progress, temporary blockers, and current-run coordination. Ask for global refinement only for durable cross-session lessons or explicitly project-qualified lessons likely to be reused in future sessions.".to_string(),
@@ -460,6 +467,7 @@ mod tests {
             &[],
             &super::super::empty_harness_state(),
             &[],
+            &ReviewLog::default(),
             &model,
             &AutoRefineReviewContext {
                 reason: "compact".to_string(),
@@ -488,6 +496,7 @@ mod tests {
             &[],
             &state,
             &[],
+            &ReviewLog::default(),
             &model,
             &RefineOptions::default(),
             plan_call,
@@ -517,10 +526,12 @@ mod tests {
         };
         let (state, model) = (super::super::empty_harness_state(), test_model());
         let options = RefineOptions::default();
+        let reviews = ReviewLog::default();
         let plan = plan_refinement(
             &[],
             &state,
             &[],
+            &reviews,
             &model,
             &options,
             stopped(StopReason::Length),
@@ -529,7 +540,15 @@ mod tests {
             reason: "checkpoint".to_string(),
             turns_since_last_review: 1,
         };
-        let review = review_auto_refine(&[], &state, &[], &model, &ctx, stopped(StopReason::Error));
+        let review = review_auto_refine(
+            &[],
+            &state,
+            &[],
+            &reviews,
+            &model,
+            &ctx,
+            stopped(StopReason::Error),
+        );
         assert_eq!(
             [
                 plan.await.err().unwrap().to_string(),
@@ -579,7 +598,10 @@ mod tests {
         let overview = overview_for_prompt(&state);
         assert!(overview.contains("memory: 1"));
         assert!(overview.contains("- [local:m1] Fact (/m/m1, v0): builds are green"));
-        assert_eq!(history_for_prompt(&[]), "No prior refinement history.");
+        assert_eq!(
+            history_for_prompt(&[], &ReviewLog::default()),
+            "No prior refinement history."
+        );
     }
 
     #[tokio::test]
@@ -590,6 +612,7 @@ mod tests {
             &[],
             &state,
             &[],
+            &ReviewLog::default(),
             &test_model(),
             &RefineOptions::default(),
             seam(reply),
@@ -617,6 +640,7 @@ mod tests {
             &[],
             &state,
             &[result],
+            &ReviewLog::default(),
             &test_model(),
             &RefineOptions {
                 rollback_id: Some("refine_target".to_string()),
@@ -632,6 +656,7 @@ mod tests {
             &[],
             &state,
             &[],
+            &ReviewLog::default(),
             &test_model(),
             &RefineOptions {
                 rollback_id: Some("nope".to_string()),
@@ -650,6 +675,7 @@ mod tests {
             &[],
             &state,
             &[],
+            &ReviewLog::default(),
             &test_model(),
             &AutoRefineReviewContext {
                 reason: "checkpoint".to_string(),
@@ -666,6 +692,7 @@ mod tests {
             &[],
             &state,
             &[],
+            &ReviewLog::default(),
             &test_model(),
             &AutoRefineReviewContext {
                 reason: "checkpoint".to_string(),

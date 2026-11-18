@@ -675,6 +675,34 @@ impl SessionTelemetry {
         self.client.track("session archived", properties);
     }
 
+    /// `learning reviewed` (schema v2): the user kept or reverted one
+    /// learning. Only the verdict, the scope, and the failed-criteria count
+    /// upload, never the learning, its note, or its id.
+    pub fn note_learning_reviewed(
+        &self,
+        verdict: &crate::refinement::review::Verdict,
+        scope: crate::refinement::HarnessScope,
+    ) {
+        use crate::refinement::review::Verdict;
+        let mut properties = self.session_properties();
+        let (name, failed_criteria_count) = match verdict {
+            Verdict::Keep => ("keep", 0),
+            Verdict::Revert {
+                failed_criteria, ..
+            } => ("revert", failed_criteria.as_slice().len()),
+        };
+        properties.set("verdict", Value::from(name));
+        properties.set(
+            "scope",
+            Value::from(match scope {
+                crate::refinement::HarnessScope::Local => "local",
+                crate::refinement::HarnessScope::Global => "global",
+            }),
+        );
+        properties.set("failed_criteria_count", Value::from(failed_criteria_count));
+        self.client.track("learning reviewed", properties);
+    }
+
     /// A `/skill:<name>` submission expanded into its skill block (the
     /// `AgentSession::prompt_with_images` expansion seam), counted as
     /// `skill_use_count` on `agent session ended`; the skill name never
