@@ -333,6 +333,91 @@ impl Worker {
         response_success(None, "refine", Some(result))
     }
 
+    /// `get_learnings`: every learning in the session's merged history with
+    /// its review state.
+    pub(crate) async fn handle_get_learnings(&self) -> DaemonResponse {
+        if let Err(response) = self.require_created("get_learnings") {
+            return response;
+        }
+        let engine = std::sync::Arc::clone(&self.engine);
+        match tokio::task::spawn_blocking(move || engine.learnings()).await {
+            Ok(Ok(data)) => response_success(None, "get_learnings", Some(data)),
+            Ok(Err(error)) => response_failure(None, "get_learnings", &format!("{error:#}"), None),
+            Err(error) => response_failure(
+                None,
+                "get_learnings",
+                &format!("learning list task failed: {error}"),
+                None,
+            ),
+        }
+    }
+
+    /// `review_learning { refinementId, verdict, failedCriteria?, note? }`:
+    /// record a keep, or a revert that rolls the learning back.
+    pub(crate) async fn handle_review_learning(&self, payload: &Value) -> DaemonResponse {
+        use pa_core::session_engine::learning_review::ReviewDecision;
+        if let Err(response) = self.require_created("review_learning") {
+            return response;
+        }
+        let Some(refinement_id) = payload
+            .get("refinementId")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+        else {
+            return response_failure(None, "review_learning", "refinementId is required", None);
+        };
+        let decision = match payload.get("verdict").and_then(Value::as_str) {
+            Some("keep") => ReviewDecision::Keep,
+            Some("revert") => {
+                let failed_criteria = payload
+                    .get("failedCriteria")
+                    .cloned()
+                    .map(serde_json::from_value)
+                    .transpose();
+                let Ok(Some(failed_criteria)) = failed_criteria else {
+                    return response_failure(
+                        None,
+                        "review_learning",
+                        "a revert needs at least one failed criterion",
+                        None,
+                    );
+                };
+                ReviewDecision::Revert {
+                    failed_criteria,
+                    note: payload
+                        .get("note")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|note| !note.is_empty())
+                        .map(str::to_string),
+                }
+            }
+            _ => {
+                return response_failure(
+                    None,
+                    "review_learning",
+                    "verdict must be keep or revert",
+                    None,
+                )
+            }
+        };
+        let engine = std::sync::Arc::clone(&self.engine);
+        match tokio::task::spawn_blocking(move || engine.review_learning(&refinement_id, decision))
+            .await
+        {
+            Ok(Ok(data)) => response_success(None, "review_learning", Some(data)),
+            Ok(Err(error)) => {
+                response_failure(None, "review_learning", &format!("{error:#}"), None)
+            }
+            Err(error) => response_failure(
+                None,
+                "review_learning",
+                &format!("review task failed: {error}"),
+                None,
+            ),
+        }
+    }
+
     /// `reload`: re-read the session's live inputs — the MCP manager
     /// re-reads its settings and auth state. Request auth needs no
     /// re-read: the live session's stream re-resolves it from the

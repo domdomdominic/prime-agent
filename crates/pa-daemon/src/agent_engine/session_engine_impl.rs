@@ -1265,6 +1265,50 @@ impl SessionEngine for AgentSessionEngine {
             .map_err(|error| anyhow::anyhow!("refinement result conversion failed: {error}"))
     }
 
+    fn learnings(&self) -> anyhow::Result<Value> {
+        let model = self.resolve_model()?;
+        self.ensure_core_session(&model)?;
+        let core = self
+            .session
+            .blocking_lock()
+            .clone()
+            .expect("session built by ensure_core_session");
+        let learnings = self.runtime.block_on(core.session.learnings())?;
+        Ok(json!({
+            "learnings": learnings
+                .iter()
+                .filter_map(|learning| learning.review_message().details)
+                .collect::<Vec<_>>(),
+        }))
+    }
+
+    fn review_learning(
+        &self,
+        refinement_id: &str,
+        decision: pa_core::session_engine::learning_review::ReviewDecision,
+    ) -> anyhow::Result<Value> {
+        let model = self.resolve_model()?;
+        self.ensure_core_session(&model)?;
+        let core = self
+            .session
+            .blocking_lock()
+            .clone()
+            .expect("session built by ensure_core_session");
+        let outcome =
+            self.runtime
+                .block_on(core.review_learning(refinement_id, decision, &model))?;
+        let data = json!({
+            "record": outcome.record,
+            "rollback": outcome.rollback.as_ref().map(|rollback| &rollback.result),
+        });
+        // The rollback already committed: its rows reach clients the way
+        // every settled refinement's rows do.
+        if let Some(rollback) = outcome.rollback {
+            self.report_background_refinement(self.runtime.spawn(async move { Ok(rollback) }));
+        }
+        Ok(data)
+    }
+
     fn rlm_max_depth_status(&self) -> Value {
         let source = *self.rlm_max_depth_source.lock().expect("depth source lock");
         let max_depth = match &self.children {

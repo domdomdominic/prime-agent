@@ -437,6 +437,10 @@ impl SessionUi {
                 self.dirty = true;
             }
             TurnUpdate::CustomRow(entry) => {
+                // A refinement or its rollback changes which learnings await a verdict.
+                if matches!(entry, ChatEntry::RefinementOutcome(_)) {
+                    self.spawn_learnings_refresh();
+                }
                 view.push_entry(entry);
             }
             TurnUpdate::AssistantMessage {

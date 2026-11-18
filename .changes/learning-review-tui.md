@@ -1,0 +1,1 @@
+- Added a learnings review view. The activity dock counts the learnings that wait for a verdict, and `/refine review` or the dock row opens a view where you keep a learning (`k`) or revert it (`r`, then the failed criteria `1`-`5` and an optional note).

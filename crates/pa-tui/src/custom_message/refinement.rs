@@ -86,6 +86,24 @@ pub(crate) fn refinement_outcome_entries(message: &Value, details: &Value) -> Ve
     ))]
 }
 
+/// A learning in a review list: the outcome card, titled with its review
+/// state and id so the `/refine keep|revert <id>` commands can name it.
+pub(crate) fn learning_review_entries(message: &Value, details: &Value) -> Vec<ChatEntry> {
+    let mut entries = refinement_outcome_entries(message, details);
+    if let [ChatEntry::RefinementOutcome(row)] = entries.as_mut_slice() {
+        let id = details
+            .get("refinementId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let state = match details.get("reviewState").and_then(Value::as_str) {
+            Some("stale") => "Stale learning (changed since)",
+            _ => "Learning pending review",
+        };
+        row.header = format!("{state} \u{b7} {id}");
+    }
+    entries
+}
+
 /// The outcome line over the applied edit list.
 fn refinement_outcome_line(
     edits: &[Value],
@@ -416,6 +434,23 @@ mod tests {
     use super::*;
     use crate::custom_message::REFINEMENT_OUTCOME_CUSTOM_TYPE;
     use serde_json::json;
+
+    #[test]
+    fn a_learning_under_review_is_titled_with_its_state_and_id() {
+        let details = json!({
+            "refinementId": "refine_1",
+            "summary": "note it",
+            "scope": "local",
+            "edits": [{"action": "create", "kind": "memory", "id": "m1", "applied": true}],
+            "reviewState": "pending",
+        });
+        let message = json!({"content": "Learning refine_1: note it"});
+        let entries = learning_review_entries(&message, &details);
+        let [ChatEntry::RefinementOutcome(row)] = entries.as_slice() else {
+            panic!("expected one refinement card");
+        };
+        assert_eq!(row.header, "Learning pending review \u{b7} refine_1");
+    }
 
     #[test]
     // Deliberate decomposed/non-NFC fixtures: the width engine measures the raw sequences.
