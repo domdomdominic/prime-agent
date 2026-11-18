@@ -16,8 +16,8 @@ use crate::refinement::review::{
     ReviewState, Verdict,
 };
 use crate::refinement::{
-    infer_refinement_result_scope, load_global_refinement_history, load_harness_state,
-    merge_refinement_history, HarnessScope, RefinementResult,
+    infer_refinement_result_scope, load_harness_state, merge_refinement_history, HarnessScope,
+    RefinementResult,
 };
 
 pub enum ReviewDecision {
@@ -53,8 +53,8 @@ fn rollback_refiner() -> RefinerFn {
 }
 
 impl AgentSession {
-    /// Every learning in the merged global and session history, oldest
-    /// first. A session without a local store has no local learnings.
+    /// Every learning in both stores' history files and the session
+    /// history, oldest first. A session without a local store has no local learnings.
     ///
     /// # Errors
     ///
@@ -62,10 +62,7 @@ impl AgentSession {
     pub async fn learnings(&self) -> anyhow::Result<Vec<Learning>> {
         let stores = self.refinement_stores()?;
         let session_history = self.session.lock().await.refinement_history();
-        let history = merge_refinement_history(
-            &load_global_refinement_history(&stores.global_dir),
-            &session_history,
-        );
+        let history = merge_refinement_history(&stores.file_history(), &session_history);
         let reviews = stores.review_log();
         let global = load_harness_state(&stores.global_dir, HarnessScope::Global);
         let local = stores
@@ -398,5 +395,41 @@ mod tests {
             prompt.contains("User review: reverted (one-off, wrong scope). Note: task state"),
             "{prompt}"
         );
+    }
+
+    /// A direct `rlm.harness` write, in the shape the kernel appends it.
+    const KERNEL_WRITE: &str = r#"{"id": "refine_20261117000209897_8d62f4", "summary": "Agent created memory Prefer uv", "rationale": "Direct kernel write (rlm.harness).", "expectedOutcome": "", "appliedEdits": [{"action": "create", "kind": "memory", "id": "m_uv", "title": "Prefer uv", "after": {"id": "m_uv", "kind": "memory", "title": "Prefer uv", "content": "Use uv run for python.", "path": "general", "scope": "local", "reference": {}, "arguments": {}, "metadata": {}, "source": "agent", "created_at": "2026-11-17T00:02:09.892847+00:00", "updated_at": "2026-11-17T00:02:09.892978+00:00", "version": 1}, "applied": true}], "scope": "local"}"#;
+
+    #[tokio::test]
+    async fn a_direct_kernel_write_is_a_revertable_learning() {
+        let (session, _tmp) = refine_test_session().await;
+        let local_dir = local_dir(&session);
+        std::fs::create_dir_all(&local_dir).unwrap();
+        let state_path = crate::refinement::get_harness_state_path(&local_dir);
+        let mut line: serde_json::Value = serde_json::from_str(KERNEL_WRITE).unwrap();
+        line["harnessStatePath"] = serde_json::json!(state_path.to_string_lossy());
+        let state = serde_json::json!({
+            "schema": 1,
+            "entries": {"memory": {"m_uv": line["appliedEdits"][0]["after"]}},
+            "refinements": [],
+        });
+        std::fs::write(&state_path, state.to_string()).unwrap();
+        std::fs::write(
+            crate::refinement::get_refinement_history_path(&local_dir),
+            format!("{line}\n"),
+        )
+        .unwrap();
+        let id = "refine_20261117000209897_8d62f4";
+        assert_eq!(state_of(&session, id).await, ReviewState::Pending);
+        session
+            .review_learning(
+                id,
+                revert(vec![Criterion::OneOff], "task state"),
+                &session_ai_model(),
+            )
+            .await
+            .unwrap();
+        let state = load_harness_state(&local_dir, HarnessScope::Local);
+        assert!(!state.entries[&RefinementKind::Memory].contains_key("m_uv"));
     }
 }

@@ -1,0 +1,1 @@
+- The agent's own `rlm.harness` writes now show up as learnings that you can review, keep, or revert, the same as refiner edits.

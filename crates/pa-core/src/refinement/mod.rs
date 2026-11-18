@@ -485,9 +485,13 @@ pub fn append_global_refinement(
     Ok(history_path)
 }
 
-/// Load the global refinement history; malformed lines are skipped.
+/// Load one store's refinement history, stamping `default_scope` on lines
+/// that carry none; malformed lines are skipped.
 #[must_use]
-pub fn load_global_refinement_history(harness_state_dir: &Path) -> Vec<RefinementResult> {
+pub fn load_refinement_history_file(
+    harness_state_dir: &Path,
+    default_scope: HarnessScope,
+) -> Vec<RefinementResult> {
     let history_path = get_refinement_history_path(harness_state_dir);
     let Ok(content) = std::fs::read_to_string(&history_path) else {
         return Vec::new();
@@ -500,7 +504,7 @@ pub fn load_global_refinement_history(harness_state_dir: &Path) -> Vec<Refinemen
         }
         if let Ok(mut result) = serde_json::from_str::<RefinementResult>(trimmed) {
             if result.scope.is_none() {
-                result.scope = Some(HarnessScope::Global);
+                result.scope = Some(default_scope);
             }
             results.push(result);
         }
@@ -849,7 +853,7 @@ mod tests {
             scope: None,
         };
         append_global_refinement(&dir, &result).unwrap();
-        let loaded = load_global_refinement_history(&dir);
+        let loaded = load_refinement_history_file(&dir, HarnessScope::Global);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].scope, Some(HarnessScope::Global));
 
